@@ -1,3 +1,5 @@
 */
 *.spec
 *.ico
+*.qrc
+resources_rc.py

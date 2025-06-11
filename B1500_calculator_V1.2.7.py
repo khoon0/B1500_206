@@ -21,7 +21,19 @@ import matplotlib.ticker as ticker
 from matplotlib.ticker import FuncFormatter
 
 CURRENT_VERSION = '1.2.7'
-MAX_HISTORY    = 20
+
+# 릴리스 노트 HTML을 이 아래에 정의해 두면 나중에 수정하기 편합니다.
+RELEASE_NOTES_HTML = (
+    "<html><body>"
+    f"<b>새 버전 V{CURRENT_VERSION} 릴리스 노트</b><br><br>"
+    "- 부팅 시 로딩 프로세스 바 추가 구현함<br>"
+    "</body></html>"
+)
+
+# --- TEST FLAG: True 로 두면 항상 인터넷 연결 없음처럼 동작합니다 ---
+SIMULATE_OFFLINE = False #배포 시 False로 변경 필수
+
+MAX_HISTORY = 20
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1) 앱 전용 데이터 폴더 경로
@@ -86,7 +98,7 @@ class CSVFileProcessor(QMainWindow):
         self.last_save_dir = os.getcwd()
 
         # ─── 패치 노트 한 번만 표시 ───
-        self.maybe_show_patch_notes()
+        #self.maybe_show_patch_notes()
         # ────────────────────────────
 
         self.initUI()
@@ -109,18 +121,14 @@ class CSVFileProcessor(QMainWindow):
         cfg = self.load_config()
         last_seen = cfg.get('last_seen_version')
         if last_seen != CURRENT_VERSION:
-            notes = (
-                "<html><body>"
-                f"<b>새 버전 V{CURRENT_VERSION} 릴리스 노트</b><br><br>"
-                "- 부팅 시 로딩 프로세스 바 추가 구현함"
-                "</body></html>"
-            )
+            # 상단에 정의한 RELEASE_NOTES_HTML 을 사용
             msg = QMessageBox(self)
             msg.setWindowTitle(f"What's New in V{CURRENT_VERSION}")
             msg.setTextFormat(Qt.RichText)
-            msg.setText(notes)
+            msg.setText(RELEASE_NOTES_HTML)
             msg.setStandardButtons(QMessageBox.Ok)
             msg.exec_()
+
             cfg['last_seen_version'] = CURRENT_VERSION
             self.save_config(cfg)
 
@@ -209,6 +217,9 @@ class CSVFileProcessor(QMainWindow):
             self.prompt_delete_old_versions()
 
     def get_latest_version(self):
+        if SIMULATE_OFFLINE:
+            # 테스트 모드: 항상 오프라인
+            return None
         try:
             response = requests.get("https://raw.githubusercontent.com/khoon0/B1500_206/master/latest_version.txt")
             return response.text.strip()
@@ -1496,7 +1507,7 @@ class CSVFileProcessor(QMainWindow):
 
 if __name__ == '__main__':
     import sys, time
-    from PyQt5.QtCore import Qt, QPoint
+    from PyQt5.QtCore import Qt, QTimer
     from PyQt5.QtGui import QPixmap, QColor, QFont, QIcon
     from PyQt5.QtWidgets import QApplication, QSplashScreen
 
@@ -1511,7 +1522,7 @@ if __name__ == '__main__':
         Qt.WindowStaysOnTopHint | Qt.SplashScreen
     )
     splash.setFont(QFont('Segoe UI', 12))
-    splash.showMessage('Loading... 0%', Qt.AlignCenter | Qt.AlignBottom, QColor('#78c2ad'))
+    splash.showMessage('Loading... 0%', Qt.AlignCenter|Qt.AlignBottom, QColor('#78c2ad'))
     splash.show()
     app.processEvents()
 
@@ -1521,22 +1532,20 @@ if __name__ == '__main__':
         splash.showMessage(f'Loading... {i}%', Qt.AlignCenter, QColor('#78c2ad'))
         app.processEvents()
 
-    # 3) 메인 윈도우 생성
+    # 3) 메인 윈도우 생성 (단, __init__ 에서는 check_for_updates, maybe_show_patch_notes 호출을 제거하세요)
     window = CSVFileProcessor()
 
-    # 4) 메인 윈도우를 스플래시와 동일한 화면, 동일한 위치에 띄우기
-    #    (스플래시의 중앙을 기준으로 윈도우의 중앙을 배치)
-    splash_geom = splash.geometry()               # 스플래시가 떠 있는 화면 및 위치
-    win_geom    = window.frameGeometry()          # 메인 윈도우 크기
-    # 스플래시 중심과 윈도우 중심을 맞추도록 이동
-    win_geom.moveCenter(splash_geom.center())
-    window.move(win_geom.topLeft())
-
-    # 5) 스플래시 닫기 & 윈도우 띄우기
+    # 4) Splash 닫고 메인 윈도우 띄우기
     splash.finish(window)
     window.show()
 
-    # 6) 업데이트 체크 (이제 팝업도 메인 윈도우 기준으로 뜸)
-    window.check_for_updates()
+    # 5) 이벤트 루프가 한 번 돌고 나서
+    def startup_sequence():
+        # 5-1) 첫 실행이라면 패치 노트
+        window.maybe_show_patch_notes()
+        # 5-2) 그리고 나서 업데이트 체크
+        window.check_for_updates()
+
+    QTimer.singleShot(0, startup_sequence)
 
     sys.exit(app.exec_())
